@@ -1,0 +1,58 @@
+// Standardize multiple journal titles across your Zotero library
+
+// Define corrections as an array of {variants, standardValue}
+var corrections = [
+    {
+        variants: ["PLoS ONE", "PloS One", "PLOS ONE"],
+        standardValue: "PLOS One"
+    },
+    {
+        variants: ["J Biol Chem", "J. Biol. Chem.", "JBC"],
+        standardValue: "Journal of Biological Chemistry"
+    },
+    {
+        variants: ["Proc Natl Acad Sci U S A", "PNAS", "Proc. Natl. Acad. Sci. USA"],
+        standardValue: "Proceedings of the National Academy of Sciences"
+    }
+];
+
+var fieldName = "publicationTitle"; // Field where journal titles are stored
+
+// Helper function to determine if a value is in any correction group
+function getStandardValue(value) {
+    for (let correction of corrections) {
+        if (correction.variants.includes(value)) {
+            return correction.standardValue;
+        }
+    }
+    return null;
+}
+
+// Set up search
+var s = new Zotero.Search();
+s.libraryID = Zotero.Libraries.userLibraryID;
+
+for (let correction of corrections) {
+    for (let i = 0; i < correction.variants.length; i++) {
+        s.addCondition(fieldName, 'is', correction.variants[i], i > 0);
+    }
+}
+
+var ids = await s.search();
+if (!ids.length) {
+    return "No items found";
+}
+
+// Execute transaction to update items
+await Zotero.DB.executeTransaction(async function () {
+    for (let id of ids) {
+        let item = await Zotero.Items.getAsync(id);
+        let currentValue = item.getField(fieldName);
+        let standardValue = getStandardValue(currentValue);
+        if (standardValue && currentValue !== standardValue) {
+            item.setField(fieldName, standardValue);
+            await item.save();
+        }
+    }
+});
+return ids.length + " item(s) updated";
